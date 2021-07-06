@@ -26,6 +26,7 @@ public:
     Memory();
     void SetMemory8(uint16_t offset, uint8_t val);
     void SetMemory16(uint16_t offset, uint16_t val);
+    void SetRomMemory(std::vector<uint8_t>& rom_contents) const;
     uint8_t ReadMemory8(uint16_t offset);
     uint16_t ReadMemory16(uint16_t offset);
 private:
