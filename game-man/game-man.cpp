@@ -3,6 +3,8 @@
 
 #include "game-man.h"
 
+
+#include "cpu.h"
 #include "file_handle.h"
 #include "memory.h"
 
@@ -11,11 +13,12 @@ using namespace std;
 int main()
 {
 	cout << "Hello CMake." << endl;
-	auto s = Memory();
+	auto mem = Memory();
 	auto fh = FileHandle("E:\\tetris-rom\\tetris-rom.gb");
 	auto& vec = fh.GetFileContentsVector();
-	s.SetRomMemory(vec);
-	cout << std::hex << offsetof(MemoryMap, switchable_rom_bank) << endl;
+	mem.SetRomMemory(vec);
+	auto gb_cpu = Cpu(mem);
+	gb_cpu.StartExecution();
 	scanf_s("%s");
 	return 0;
 }

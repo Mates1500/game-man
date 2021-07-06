@@ -15,7 +15,7 @@ struct MemoryMap
     uint8_t sprite_attributes[0x00A0];
     uint8_t reserved2[0x0060];
     uint8_t i_o[0x004B];
-    uint8_t reserved3[0x0033];
+    uint8_t reserved3[0x0034];
     uint8_t high_ram[0x0080];
     uint8_t interrupt_register;
 };

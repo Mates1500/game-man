@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-Memory::Memory() : m_memoryBuffer(GB_MEMORY_BUFFER_SIZE), m_memoryMap(reinterpret_cast<MemoryMap*>(m_memoryBuffer.data()))
+Memory::Memory() : m_memoryBuffer(GB_MEMORY_BUFFER_SIZE + 1), m_memoryMap(reinterpret_cast<MemoryMap*>(m_memoryBuffer.data()))
 {
 
 }
