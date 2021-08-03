@@ -9,6 +9,13 @@ public:
     void StartExecution();
     void ExecuteInstruction();
 private:
+
+    static constexpr bool CarryOnAddition(uint16_t first_num, uint16_t second_num)
+    {
+        // is this garbage and slow? probably, but it works
+        return static_cast<uint32_t>(first_num) + static_cast<uint32_t>(second_num) > 0xFFFF;
+    }
+
     // kindly copypasted from https://stackoverflow.com/a/57822729
     static constexpr bool HalfCarryOnAddition(uint8_t first_num, uint8_t second_num)
     {
@@ -31,11 +38,15 @@ private:
     }
 
     void Execute_Xor_N(uint8_t opCode);
-    void Execute_Load_8(uint8_t opCode);
+    void Execute_Load_8_Val(uint8_t opCode);
+    void Execute_Load_8_Operand(uint8_t opCode);
+    void Execute_Load_16_Val(uint8_t opCode);
     void Execute_Load_HL_A_Dec(uint8_t opCode);
     void Execute_Dec_8(uint8_t opCode);
     void Execute_Dec_16(uint8_t opCode, bool suppress_pc_inc = false);
     void Execute_Jr(uint8_t opCode);
+    void Execute_Add_HL_Operand(uint8_t opCode);
+    void Execute_Inc_8(uint8_t opCode);
     Memory& m_Memory;
 
     union TwinRegister
