@@ -14,9 +14,11 @@ void Memory::SetMemory8(uint16_t offset, uint8_t val)
 
 void Memory::SetMemory16(uint16_t offset, uint16_t val)
 {
-    // TODO: check length constraint
-    this->m_memoryBuffer.at(offset) = (val & 0x00FF); // LE, therefore low first
-    this->m_memoryBuffer.at(offset + 1) = (val >> 8); // high second
+    if (offset + 2 > this->m_memoryBuffer.size())
+        throw std::runtime_error("Memory::SetMemory16 - offset + 2 bytes > memoryBuffer");
+
+    this->m_memoryBuffer.at(offset + 1) = (val & 0x00FF); // LE to BE, therefore high first
+    this->m_memoryBuffer.at(offset) = (val >> 8); // low second
 }
 
 void Memory::SetRomMemory(std::vector<uint8_t>& rom_contents) const
@@ -43,5 +45,15 @@ uint8_t Memory::ReadMemory8(uint16_t offset)
 
 uint16_t Memory::ReadMemory16(uint16_t offset)
 {
-    return *reinterpret_cast<uint16_t*>(&m_memoryBuffer[offset]);
+    uint16_t result = *reinterpret_cast<uint16_t*>(&m_memoryBuffer[offset]); // wrong interpretation because memory is Big Endian mapped, but CPU is most likely Little Endian
+    result =  (result >> 8) | (result << 8); // BE to LE
+    return result;
+}
+
+uint8_t* Memory::GetPtrAt(uint16_t offset)
+{
+    if (offset > this->m_memoryBuffer.size())
+        throw std::runtime_error("Memory::GetPtrAt - Invalid location, out of bounds " + offset);
+
+    return &this->m_memoryBuffer.at(offset);
 }

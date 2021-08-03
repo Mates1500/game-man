@@ -29,6 +29,7 @@ public:
     void SetRomMemory(std::vector<uint8_t>& rom_contents) const;
     uint8_t ReadMemory8(uint16_t offset);
     uint16_t ReadMemory16(uint16_t offset);
+    uint8_t* GetPtrAt(uint16_t offset);
 private:
     std::vector<uint8_t> m_memoryBuffer;
     MemoryMap* m_memoryMap;
