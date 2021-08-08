@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #define GB_MEMORY_BUFFER_SIZE 0xFFFF
+#define SP_INIT_VAL 0xFFFE
 
 struct MemoryMap
 {

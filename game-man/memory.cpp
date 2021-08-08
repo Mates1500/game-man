@@ -17,8 +17,9 @@ void Memory::SetMemory16(uint16_t offset, uint16_t val)
     if (offset + 2 > this->m_memoryBuffer.size())
         throw std::runtime_error("Memory::SetMemory16 - offset + 2 bytes > memoryBuffer");
 
-    this->m_memoryBuffer.at(offset + 1) = (val & 0x00FF); // LE to BE, therefore high first
-    this->m_memoryBuffer.at(offset) = (val >> 8); // low second
+    this->m_memoryBuffer.at(offset) = (val & 0x00FF); // considering we're on LE, low byte first
+    this->m_memoryBuffer.at(offset + 1) = (val >> 8); // high second
+    // TODO: Big Endian?
 }
 
 void Memory::SetRomMemory(std::vector<uint8_t>& rom_contents) const
@@ -45,9 +46,7 @@ uint8_t Memory::ReadMemory8(uint16_t offset)
 
 uint16_t Memory::ReadMemory16(uint16_t offset)
 {
-    uint16_t result = *reinterpret_cast<uint16_t*>(&m_memoryBuffer[offset]); // wrong interpretation because memory is Big Endian mapped, but CPU is most likely Little Endian
-    result =  (result >> 8) | (result << 8); // BE to LE
-    return result;
+    return *reinterpret_cast<uint16_t*>(&m_memoryBuffer[offset]); // if we consider we're on Little Endian, TODO: BE?
 }
 
 uint8_t* Memory::GetPtrAt(uint16_t offset)
