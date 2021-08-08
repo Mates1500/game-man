@@ -16,6 +16,16 @@ private:
         return static_cast<uint32_t>(first_num) + static_cast<uint32_t>(second_num) > 0xFFFF;
     }
 
+    static constexpr bool CarryOnSubtraction(uint16_t first_num, uint16_t second_num)
+    {
+        return static_cast<int32_t>(first_num) - static_cast<int32_t>(second_num) < 0;
+    }
+
+    static constexpr bool CarryOnSubtraction(uint8_t first_num, uint8_t second_num)
+    {
+        return static_cast<int16_t>(first_num) - static_cast<int16_t>(second_num) < 0;
+    }
+
     // kindly copypasted from https://stackoverflow.com/a/57822729
     static constexpr bool HalfCarryOnAddition(uint8_t first_num, uint8_t second_num)
     {
@@ -37,16 +47,36 @@ private:
         return (int)(first_num & 0x00FF) - (int)(second_num & 0x00FF) < 0;
     }
 
+    void ElapseCycles(int cycles);
+
     void Execute_Xor_N(uint8_t opCode);
     void Execute_Load_8_Val(uint8_t opCode);
     void Execute_Load_8_Operand(uint8_t opCode);
     void Execute_Load_16_Val(uint8_t opCode);
     void Execute_Load_HL_A_Dec(uint8_t opCode);
+    void Execute_Load_HL_A_Inc();
+    void Execute_Load_FF00_C_A();
     void Execute_Dec_8(uint8_t opCode);
     void Execute_Dec_16(uint8_t opCode, bool suppress_pc_inc = false);
-    void Execute_Jr(uint8_t opCode);
+    void Execute_Jr_Flag(uint8_t opCode);
+    void Execute_Jr_n(uint8_t opCode);
     void Execute_Add_HL_Operand(uint8_t opCode);
     void Execute_Inc_8(uint8_t opCode);
+    void Execute_Inc_16(uint8_t opCode, bool suppress_pc_inc = false);
+    void Execute_Sub_8(uint8_t opCode);
+    void Execute_SBC_8(uint8_t opCode);
+    void Execute_LDH_n_A();
+    void Execute_LDH_A_n();
+    void Execute_Compare_8(uint8_t opCode);
+    void Execute_Or_N(uint8_t opCode);
+    void Execute_And_N(uint8_t opCode);
+
+    uint16_t PopStack();
+    void PushStack(uint16_t val);
+
+    void Execute_Call();
+    void Execute_Return(uint8_t opCode);
+
     Memory& m_Memory;
 
     union TwinRegister
@@ -74,5 +104,6 @@ private:
         bool c;
     };
     cpu_flags flags;
+    bool interrupts_enabled;
 };
 

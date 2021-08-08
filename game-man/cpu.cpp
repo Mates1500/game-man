@@ -4,12 +4,13 @@
 
 Cpu::Cpu(Memory& memory): m_Memory(memory)
 {
+    this->sp = SP_INIT_VAL;
 }
 
 void Cpu::StartExecution()
 {
     this->pc = GB_ROM_ENTRY_POINT;
-
+    
     while(1)
     {
         this->ExecuteInstruction();
@@ -24,6 +25,12 @@ void Cpu::ExecuteInstruction()
     {
     case 0x00: // NOP
         pc += 1;
+        break;
+    case 0x03: // INC BC
+    case 0x13: // INC DE
+    case 0x23: // INC HL
+    case 0x33: // INC SP
+        Execute_Inc_16(op);
         break;
     case 0x3C: // INC A
     case 0x04: // INC B
@@ -41,6 +48,31 @@ void Cpu::ExecuteInstruction()
     case 0x39: // ADD HL, SP
         Execute_Add_HL_Operand(op);
         break;
+    case 0x97: // SUB A
+    case 0x90: // SUB B
+    case 0x91: // SUB C
+    case 0x92: // SUB D
+    case 0x93: // SUB E
+    case 0x94: // SUB H
+    case 0x95: // SUB L
+    case 0x96: // SUB (HL)
+    case 0xD6: // SUB # ???
+        // 4 cycles for most
+        // 8 cycles for HL, #
+        Execute_Sub_8(op);
+        break;
+    case 0x9F: // SBC A, A
+    case 0x98: // SBC A, B
+    case 0x99: // SBC A, C
+    case 0x9A: // SBC A, D
+    case 0x9B: // SBC A, E
+    case 0x9C: // SBC A, H
+    case 0x9D: // SBC A, L
+    case 0x9E: // SBC A, (HL)
+        // 4 cycles for most
+        // 8 Cycles for HL
+        Execute_SBC_8(op);
+        break;
     case 0x2F: // CPL
         // one's complement of A register
         // 4 cycles
@@ -56,6 +88,7 @@ void Cpu::ExecuteInstruction()
         ++hl.both;
         pc += 1;
         break;
+    case 0x3E: // LD A, #
     case 0x06: // LD B, n
     case 0x0E: // LD C, n
     case 0x16: // LD D, n
@@ -137,8 +170,10 @@ void Cpu::ExecuteInstruction()
     case 0x02: // LD (BC), A
     case 0x12: // LD (DE), A
     case 0x77: // LD (HL), A
+    case 0x36: // LD (HL), n
+    case 0xEA:
         // 4 cycles for most
-        // 8 cycles for anything using 16 bit stuff
+        // 8 or 12 cycles for anything using 16 bit stuff
         Execute_Load_8_Operand(op);
         break;
     case 0x3A: // LDD A, (HL)
@@ -146,12 +181,21 @@ void Cpu::ExecuteInstruction()
         // 8 cycles
         Execute_Load_HL_A_Dec(op);
         break;
+    case 0x2A: // LDI A, (HL)
+        Execute_Load_HL_A_Inc();
+        break;
+    case 0xE2: // LD (C), A
+        Execute_Load_FF00_C_A();
+        break;
     case 0x20: // JR NZ
     case 0x28: // JR Z
     case 0x30: // JR NC
     case 0x38: // JR C
         // 8 cycles
-        Execute_Jr(op);
+        Execute_Jr_Flag(op);
+        break;
+    case 0x18: // JR n
+        Execute_Jr_n(op);
         break;
     case 0x0B: // DEC BC
     case 0x1B: // DEC DE
@@ -182,6 +226,66 @@ void Cpu::ExecuteInstruction()
     case 0xC3: // JP 16bit
         // 12 cycles
         pc = m_Memory.ReadMemory16(pc + 1);
+        break;
+    case 0xE0: // LDH (n), A
+        // 12 cycles
+        Execute_LDH_n_A();
+        break;
+    case 0xF0: // LDH A, (n)
+        Execute_LDH_A_n();
+        break;
+    case 0xFB: // EI
+        // 4 cycles
+        interrupts_enabled = true;
+        pc += 1;
+        break;
+    case 0xF3: // DI
+        // 4 cycles
+        interrupts_enabled = false;
+        pc += 1;
+        break;
+    case 0xBF: // CP A
+    case 0xB8: // CP B
+    case 0xB9: // CP C
+    case 0xBA: // CP D
+    case 0xBB: // CP E
+    case 0xBC: // CP H
+    case 0xBD: // CP L
+    case 0xBE: // CP (HL)
+    case 0xFE: // CP #
+        Execute_Compare_8(op);
+        break;
+    case 0xCD: // CALL nn
+        Execute_Call();
+        break;
+    case 0xC9: // RET
+    case 0xC0: // RET NZ
+    case 0xC8: // RET Z
+    case 0xD0: // RET NC
+    case 0xD8: // RET C
+        Execute_Return(op);
+        break;
+    case 0xB7: // OR A
+    case 0xB0: // OR B
+    case 0xB1: // OR C
+    case 0xB2: // OR D
+    case 0xB3: // OR E
+    case 0xB4: // OR H
+    case 0xB5: // OR L
+    case 0xB6: // OR (HL)
+    case 0xF6: // OR (#)
+        Execute_Or_N(op);
+        break;
+    case 0xA7: // AND A
+    case 0xA0: // AND B
+    case 0xA1: // AND C
+    case 0xA2: // AND D
+    case 0xA3: // AND E
+    case 0xA4: // AND H
+    case 0xA5: // AND L
+    case 0xA6: // AND (HL)
+    case 0xE6: // AND #
+        Execute_And_N(op);
         break;
     default:
         throw std::runtime_error("Not implemented " + op);
@@ -234,6 +338,9 @@ void Cpu::Execute_Load_8_Val(uint8_t opCode)
     uint8_t* operand = nullptr;
     switch(opCode)
     {
+    case 0x3E: // LD A, #
+        operand = &af.first;
+        break;
     case 0x06: // LD B, n
         operand = &bc.first;
         break;
@@ -264,7 +371,8 @@ void Cpu::Execute_Load_8_Operand(uint8_t opCode)
 {
     uint8_t* operandDest = nullptr;
     uint8_t srcVal = 0;
-    uint8_t cycles = 4; // most operations, HL related use 8
+    uint8_t cycles = 4; // most operations, HL related use 8, n load uses 12
+    uint8_t jp_counter = 1;
     switch(opCode)
     {
     case 0x7F: // LD A, A
@@ -543,12 +651,24 @@ void Cpu::Execute_Load_8_Operand(uint8_t opCode)
         srcVal = af.first;
         cycles = 8;
         break;
+    case 0x36: // LD (HL), n
+        operandDest = this->m_Memory.GetPtrAt(hl.both);
+        srcVal = this->m_Memory.ReadMemory8(pc + 1);
+        cycles = 12;
+        jp_counter = 2;
+        break;
+    case 0xEA: // LD (nn), A
+        operandDest = this->m_Memory.GetPtrAt(this->m_Memory.ReadMemory16(pc + 1));
+        srcVal = af.first;
+        cycles = 16;
+        jp_counter = 3;
+        break;
     default:
         throw std::runtime_error("Unimplemented opCode " + opCode);
     }
 
     *operandDest = srcVal;
-    pc += 1;
+    pc += jp_counter;
 }
 
 void Cpu::Execute_Load_16_Val(uint8_t opCode)
@@ -584,8 +704,25 @@ void Cpu::Execute_Load_HL_A_Dec(uint8_t opCode)
     if(opCode != 0x3A && opCode != 0x32)
         throw std::runtime_error("Unimplemented opCode " + opCode);
 
-    af.first = m_Memory.ReadMemory8(hl.both);
+    m_Memory.SetMemory8(hl.both, af.first);
     Execute_Dec_16(0x2B, true); // DEC HL val
+    pc += 1;
+}
+
+void Cpu::Execute_Load_HL_A_Inc()
+{
+    uint8_t cycles = 8;
+
+    m_Memory.SetMemory8(hl.both, af.first);
+    Execute_Inc_16(0x23, true); // INC HL val
+    pc += 1;
+}
+
+void Cpu::Execute_Load_FF00_C_A()
+{
+    uint8_t cycles = 8;
+    m_Memory.SetMemory8(0xFF00 + bc.second, af.first);
+
     pc += 1;
 }
 
@@ -640,8 +777,8 @@ void Cpu::Execute_Dec_8(uint8_t opCode)
         new_val = *operand;
     }
     
-
-    flags.z = new_val == 0;
+    if (new_val == 0)
+        flags.z = true;
     flags.n = true;
     flags.h = HalfCarryOnSubtraction(orig_val, new_val);
 
@@ -721,7 +858,369 @@ void Cpu::Execute_Inc_8(uint8_t opCode)
     pc += 1;
 }
 
-void Cpu::Execute_Jr(uint8_t opCode)
+void Cpu::Execute_Inc_16(uint8_t opCode, bool suppress_pc_inc)
+{
+    // 8 cycles
+    uint16_t* operand = nullptr;
+    uint8_t cycles = 8;
+
+    switch(opCode)
+    {
+    case 0x03: // INC BC
+        operand = &bc.both;
+        break;
+    case 0x13: // INC DE
+        operand = &de.both;
+        break;
+    case 0x23: // INC HL
+        operand = &hl.both;
+        break;
+    case 0x33: // INC SP
+        operand = &sp;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    *operand += 1;
+
+    if(!suppress_pc_inc)
+        pc += 1;
+}
+
+void Cpu::Execute_Sub_8(uint8_t opCode)
+{
+    uint8_t* operand = nullptr;
+    uint8_t cycles = 4;
+    switch(opCode)
+    {
+    case 0x97: // SUB A
+        operand = &af.first;
+        break;
+    case 0x90: // SUB B
+        operand = &bc.first;
+        break;
+    case 0x91: // SUB C
+        operand = &bc.second;
+        break;
+    case 0x92: // SUB D
+        operand = &de.first;
+        break;
+    case 0x93: // SUB E
+        operand = &de.second;
+        break;
+    case 0x94: // SUB H
+        operand = &hl.first;
+        break;
+    case 0x95: // SUB L
+        operand = &hl.second;
+        break;
+    case 0x96: // SUB (HL)
+        operand = m_Memory.GetPtrAt(hl.both);
+        cycles = 8;
+        break;
+    case 0xD6: // SUB # ???
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    flags.n = true;
+    flags.h = !HalfCarryOnSubtraction(af.first, *operand);
+    flags.c = !CarryOnSubtraction(af.first, *operand);
+
+    af.first -= *operand;
+
+    if (af.first == 0)
+        flags.z = true;
+
+    pc += 1;
+}
+
+void Cpu::Execute_SBC_8(uint8_t opCode)
+{
+    uint8_t* operand = nullptr;
+    uint8_t cycles = 4;
+
+    switch(opCode)
+    {
+    case 0x9F: // SBC A, A
+        operand = &af.first;
+        break;
+    case 0x98: // SBC A, B
+        operand = &bc.first;
+        break;
+    case 0x99: // SBC A, C
+        operand = &bc.second;
+        break;
+    case 0x9A: // SBC A, D
+        operand = &de.first;
+        break;
+    case 0x9B: // SBC A, E
+        operand = &de.second;
+        break;
+    case 0x9C: // SBC A, H
+        operand = &hl.first;
+        break;
+    case 0x9D: // SBC A, L
+        operand = &hl.second;
+        break;
+    case 0x9E: // SBC A, (HL)
+        operand = m_Memory.GetPtrAt(hl.both);
+        cycles = 8;
+        break;
+    default:
+        throw std::runtime_error("Unknown opCode " + opCode);
+    }
+
+    const uint8_t subtractor = *operand + flags.c;
+
+    flags.n = true;
+    flags.h = !HalfCarryOnSubtraction(af.first, subtractor);
+    flags.c = !CarryOnSubtraction(af.first, subtractor);
+
+    af.first -= subtractor;
+
+    if (af.first == 0)
+        flags.z = true;
+
+    pc += 1;
+}
+
+void Cpu::Execute_LDH_n_A()
+{
+    const uint8_t cycles = 12;
+
+    const uint8_t extra_offset = m_Memory.ReadMemory8(pc + 1);
+    m_Memory.SetMemory8(0xFF00 + extra_offset, af.first);
+
+    pc += 2;
+}
+
+void Cpu::Execute_LDH_A_n()
+{
+    const uint8_t cycles = 12;
+
+    const uint8_t extra_offset = m_Memory.ReadMemory8(pc + 1);
+    af.first = m_Memory.ReadMemory8(0xFF00 + extra_offset);
+
+    pc += 2;
+}
+
+void Cpu::Execute_Compare_8(uint8_t opCode)
+{
+    uint8_t comparator;
+    uint8_t cycles = 4;
+    uint8_t jp_counter = 1;
+    switch(opCode)
+    {
+    case 0xBF: // CP A
+        comparator = af.first;
+        break;
+    case 0xB8: // CP B
+        comparator = bc.first;
+        break;
+    case 0xB9: // CP C
+        comparator = bc.second;
+        break;
+    case 0xBA: // CP D
+        comparator = de.first;
+        break;
+    case 0xBB: // CP E
+        comparator = de.second;
+        break;
+    case 0xBC: // CP H
+        comparator = hl.first;
+        break;
+    case 0xBD: // CP L
+        comparator = hl.second;
+        break;
+    case 0xBE: // CP (HL)
+        comparator = m_Memory.ReadMemory8(hl.both);
+        cycles = 8;
+        break;
+    case 0xFE: // CP #
+        comparator = m_Memory.ReadMemory8(pc + 1);
+        cycles = 8;
+        jp_counter = 2;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    if (af.first - comparator == 0)
+        flags.z = true;
+
+    flags.n = true;
+    if (HalfCarryOnSubtraction(af.first, comparator))
+        flags.h = true;
+    if (CarryOnSubtraction(af.first, comparator))
+        flags.c = true;
+
+    pc += jp_counter;
+}
+
+void Cpu::Execute_Or_N(uint8_t opCode)
+{
+    uint8_t cycles = 4;
+    uint8_t* operand = nullptr;
+    uint8_t jp_counter = 1;
+    switch(opCode)
+    {
+    case 0xB7: // OR A
+        operand = &af.first;
+        break;
+    case 0xB0: // OR B
+        operand = &bc.first;
+        break;
+    case 0xB1: // OR C
+        operand = &bc.second;
+        break;
+    case 0xB2: // OR D
+        operand = &de.first;
+        break;
+    case 0xB3: // OR E
+        operand = &de.second;
+        break;
+    case 0xB4: // OR H
+        operand = &hl.first;
+        break;
+    case 0xB5: // OR L
+        operand = &hl.second;
+        break;
+    case 0xB6: // OR (HL)
+        operand = m_Memory.GetPtrAt(hl.both);
+        cycles = 8;
+    case 0xF6: // OR (#)
+        operand = m_Memory.GetPtrAt(pc + 1);
+        cycles = 8;
+        jp_counter = 2;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    af.first |= *operand;
+
+    if (af.first == 0)
+        flags.z = true;
+
+    flags.n = false;
+    flags.h = false;
+    flags.c = false;
+
+    pc += jp_counter;
+}
+
+void Cpu::Execute_And_N(uint8_t opCode)
+{
+    uint8_t cycles = 4;
+    uint8_t* operand = nullptr;
+    uint8_t jp_counter = 1;
+    switch(opCode)
+    {
+    case 0xA7: // AND A
+        operand = &af.first;
+        break;
+    case 0xA0: // AND B
+        operand = &bc.first;
+        break;
+    case 0xA1: // AND C
+        operand = &bc.second;
+        break;
+    case 0xA2: // AND D
+        operand = &de.first;
+        break;
+    case 0xA3: // AND E
+        operand = &de.second;
+        break;
+    case 0xA4: // AND H
+        operand = &hl.first;
+        break;
+    case 0xA5: // AND L
+        operand = &hl.second;
+        break;
+    case 0xA6: // AND (HL)
+        operand = m_Memory.GetPtrAt(hl.both);
+        cycles = 8;
+        break;
+    case 0xE6: // AND #
+        operand = m_Memory.GetPtrAt(pc + 1);
+        cycles = 8;
+        jp_counter = 2;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    af.first &= *operand;
+
+    if (af.first == 0)
+        flags.z = true;
+
+    flags.n = false;
+    flags.h = true;
+    flags.c = false;
+
+    pc += jp_counter;
+}
+
+uint16_t Cpu::PopStack()
+{
+    uint16_t val = m_Memory.ReadMemory16(sp);
+    sp += 2;
+    return val;
+}
+
+void Cpu::PushStack(uint16_t val)
+{
+    sp -= 2;
+    m_Memory.SetMemory16(sp, val);
+}
+
+void Cpu::Execute_Call()
+{
+    uint8_t cycles = 12;
+
+    PushStack(pc + 3);
+    const uint16_t jp_loc = m_Memory.ReadMemory16(pc + 1);
+
+    pc = jp_loc;
+}
+
+void Cpu::Execute_Return(uint8_t opCode)
+{
+    bool rt = false;
+    uint8_t cycles = 8;
+    switch(opCode)
+    {
+    case 0xC9: // RET
+        rt = true;
+        break;
+    case 0xC0: // RET NZ
+        rt = !flags.z;
+        break;
+    case 0xC8: // RET Z
+        rt = flags.z;
+        break;
+    case 0xD0: // RET NC
+        rt = !flags.c;
+        break;
+    case 0xD8: // RET C
+        rt = flags.c;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    if(rt)
+    {
+        const uint16_t rt_address = PopStack();
+        pc = rt_address;
+    }
+}
+
+
+void Cpu::Execute_Jr_Flag(uint8_t opCode)
 {
     // 8 cycles
     bool jp = false;
@@ -748,6 +1247,12 @@ void Cpu::Execute_Jr(uint8_t opCode)
     }
     uint8_t orig_val = m_Memory.ReadMemory8(pc + 1);
     int8_t jump_relative = static_cast<int8_t>(orig_val);
+    pc += jump_relative;
+}
+
+void Cpu::Execute_Jr_n(uint8_t opCode)
+{
+    int8_t jump_relative = static_cast<int8_t>(m_Memory.ReadMemory8(pc + 1));
     pc += jump_relative;
 }
 
