@@ -48,6 +48,17 @@ void Cpu::ExecuteInstruction()
     case 0x39: // ADD HL, SP
         Execute_Add_HL_Operand(op);
         break;
+    case 0x87: // ADD A, A
+    case 0x80: // ADD A, B
+    case 0x81: // ADD A, C
+    case 0x82: // ADD A, D
+    case 0x83: // ADD A, E
+    case 0x84: // ADD A, H
+    case 0x85: // ADD A, L
+    case 0x86: // ADD A, (HL)
+    case 0xC6: // ADD A, #
+        Execute_Add_8(op);
+        break;
     case 0x97: // SUB A
     case 0x90: // SUB B
     case 0x91: // SUB C
@@ -227,6 +238,9 @@ void Cpu::ExecuteInstruction()
         // 12 cycles
         pc = m_Memory.ReadMemory16(pc + 1);
         break;
+    case 0xE9: // JP (HL)
+        Execute_Jp_HL();
+        break;
     case 0xE0: // LDH (n), A
         // 12 cycles
         Execute_LDH_n_A();
@@ -254,6 +268,18 @@ void Cpu::ExecuteInstruction()
     case 0xBE: // CP (HL)
     case 0xFE: // CP #
         Execute_Compare_8(op);
+        break;
+    case 0xF1: // POP AF
+    case 0xC1: // POP BC
+    case 0xD1: // POP DE
+    case 0xE1: // POP HL
+        Execute_Pop(op);
+        break;
+    case 0xF5: // PUSH AF
+    case 0xC5: // PUSH BC
+    case 0xD5: // PUSH DE
+    case 0xE5: // PUSH HL
+        Execute_Push(op);
         break;
     case 0xCD: // CALL nn
         Execute_Call();
@@ -286,6 +312,19 @@ void Cpu::ExecuteInstruction()
     case 0xA6: // AND (HL)
     case 0xE6: // AND #
         Execute_And_N(op);
+        break;
+    case 0xCB: // SWAP
+        Execute_Swap();
+        break;
+    case 0xC7: // RST 0x00
+    case 0xCF: // RST 0x08
+    case 0xD7: // RST 0x10
+    case 0xDF: // RST 0x18
+    case 0xE7: // RST 0x20
+    case 0xEF: // RST 0x28
+    case 0xF7: // RST 0x30
+    case 0xFF: // RST 0x38
+        Execute_Rst(op);
         break;
     default:
         throw std::runtime_error("Not implemented " + op);
@@ -324,7 +363,9 @@ void Cpu::Execute_Xor_N(uint8_t opCode)
     }
 
     af.first ^= operand;
-    flags.z = af.first == 0x0;
+
+    if (af.first == 0)
+        flags.z = true;
     flags.n = false;
     flags.h = false;
     flags.c = false;
@@ -489,7 +530,7 @@ void Cpu::Execute_Load_8_Operand(uint8_t opCode)
         break;
     case 0x5F: // LD E, A
         operandDest = &de.second;
-        srcVal = bc.first;
+        srcVal = af.first;
         break;
     case 0x58: // LD E, B
         operandDest = &de.second;
@@ -848,7 +889,8 @@ void Cpu::Execute_Inc_8(uint8_t opCode)
         throw std::runtime_error("Unimplemented opCode " + opCode);
     }
 
-    flags.h = HalfCarryOnAddition(*operand, 1);
+    if(HalfCarryOnAddition(*operand, 1))
+        flags.h = true;
     flags.n = false;
 
     *operand += 1;
@@ -925,8 +967,10 @@ void Cpu::Execute_Sub_8(uint8_t opCode)
     }
 
     flags.n = true;
-    flags.h = !HalfCarryOnSubtraction(af.first, *operand);
-    flags.c = !CarryOnSubtraction(af.first, *operand);
+    if (!HalfCarryOnSubtraction(af.first, *operand))
+        flags.h = true;
+    if (!CarryOnSubtraction(af.first, *operand))
+        flags.c = true;
 
     af.first -= *operand;
 
@@ -975,8 +1019,10 @@ void Cpu::Execute_SBC_8(uint8_t opCode)
     const uint8_t subtractor = *operand + flags.c;
 
     flags.n = true;
-    flags.h = !HalfCarryOnSubtraction(af.first, subtractor);
-    flags.c = !CarryOnSubtraction(af.first, subtractor);
+    if (!HalfCarryOnSubtraction(af.first, subtractor))
+        flags.h = true;
+    if (!CarryOnSubtraction(af.first, subtractor))
+        flags.c = true;
 
     af.first -= subtractor;
 
@@ -1164,6 +1210,93 @@ void Cpu::Execute_And_N(uint8_t opCode)
     pc += jp_counter;
 }
 
+void Cpu::Execute_Swap()
+{
+    uint8_t cycles = 8;
+    uint8_t swap_opcode = m_Memory.ReadMemory8(pc + 1);
+    uint8_t* operand = nullptr;
+    switch(swap_opcode)
+    {
+    case 0x37: // SWAP A
+        operand = &af.first;
+        break;
+    case 0x30: // SWAP B
+        operand = &bc.first;
+        break;
+    case 0x31: // SWAP C
+        operand = &bc.second;
+        break;
+    case 0x32: // SWAP D
+        operand = &de.first;
+        break;
+    case 0x33: // SWAP E
+        operand = &de.second;
+        break;
+    case 0x34: // SWAP H
+        operand = &hl.first;
+        break;
+    case 0x35: // SWAP L
+        operand = &hl.second;
+        break;
+    case 0x36: // SWAP (HL)
+        operand = m_Memory.GetPtrAt(hl.both);
+        cycles = 16;
+        break;
+    default:
+        throw std::runtime_error("Unknown SWAP opCode " + swap_opcode);
+    }
+
+    *operand = Swap(*operand);
+
+    if (*operand == 0)
+        flags.z = true;
+
+    flags.n = false;
+    flags.h = false;
+    flags.c = false;
+
+    pc += 2;
+}
+
+void Cpu::Execute_Rst(uint8_t opCode)
+{
+    uint8_t cycles = 32;
+    uint8_t abs_jp;
+    switch(opCode)
+    {
+    case 0xC7: // RST 0x00
+        abs_jp = 0x00;
+        break;
+    case 0xCF: // RST 0x08
+        abs_jp = 0x08;
+        break;
+    case 0xD7: // RST 0x10
+        abs_jp = 0x10;
+        break;
+    case 0xDF: // RST 0x18
+        abs_jp = 0x18;
+        break;
+    case 0xE7: // RST 0x20
+        abs_jp = 0x20;
+        break;
+    case 0xEF: // RST 0x28
+        abs_jp = 0x28;
+        break;
+    case 0xF7: // RST 0x30
+        abs_jp = 0x30;
+        break;
+    case 0xFF: // RST 0x38
+        abs_jp = 0x38;
+        break;
+    default:
+        throw std::runtime_error("Unknown opCode " + opCode);
+    }
+
+    PushStack(pc);
+
+    pc = abs_jp;
+}
+
 uint16_t Cpu::PopStack()
 {
     uint16_t val = m_Memory.ReadMemory16(sp);
@@ -1219,6 +1352,60 @@ void Cpu::Execute_Return(uint8_t opCode)
     }
 }
 
+void Cpu::Execute_Pop(uint8_t opCode)
+{
+    uint8_t cycles = 12;
+    uint16_t* dest = nullptr;
+    switch(opCode)
+    {
+    case 0xF1: // POP AF
+        dest = &af.both;
+        break;
+    case 0xC1: // POP BC
+        dest = &bc.both;
+        break;
+    case 0xD1: // POP DE
+        dest = &de.both;
+        break;
+    case 0xE1: // POP HL
+        dest = &hl.both;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    *dest = PopStack();
+
+    pc += 1;
+}
+
+void Cpu::Execute_Push(uint8_t opCode)
+{
+    uint8_t cycles = 16;
+    uint16_t val;
+    switch(opCode)
+    {
+    case 0xF5: // PUSH AF
+        val = af.both;
+        break;
+    case 0xC5: // PUSH BC
+        val = bc.both;
+        break;
+    case 0xD5: // PUSH DE
+        val = de.both;
+        break;
+    case 0xE5: // PUSH HL
+        val = hl.both;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    PushStack(val);
+
+    pc += 1;
+}
+
 
 void Cpu::Execute_Jr_Flag(uint8_t opCode)
 {
@@ -1256,6 +1443,14 @@ void Cpu::Execute_Jr_n(uint8_t opCode)
     pc += jump_relative;
 }
 
+void Cpu::Execute_Jp_HL()
+{
+    uint8_t cycles = 4;
+
+    uint16_t loc = m_Memory.ReadMemory16(hl.both);
+    pc = loc;
+}
+
 void Cpu::Execute_Add_HL_Operand(uint8_t opCode)
 {
     // 8 cycles
@@ -1278,8 +1473,68 @@ void Cpu::Execute_Add_HL_Operand(uint8_t opCode)
     }
 
     flags.n = false;
-    flags.h = HalfCarryOnAddition(hl.both, srcVal);
-    flags.c = CarryOnAddition(hl.both, srcVal);
+    if (HalfCarryOnAddition(hl.both, srcVal))
+        flags.h = true;
+    if (CarryOnAddition(hl.both, srcVal))
+        flags.c = true;
     hl.both += srcVal;
     pc += 1;
+}
+
+void Cpu::Execute_Add_8(uint8_t opCode)
+{
+    uint8_t srcVal;
+    uint8_t cycles = 4;
+    uint8_t jp_counter = 1;
+    switch(opCode)
+    {
+    case 0x87: // ADD A, A
+        srcVal = af.first;
+        break;
+    case 0x80: // ADD A, B
+        srcVal = bc.first;
+        break;
+    case 0x81: // ADD A, C
+        srcVal = bc.second;
+        break;
+    case 0x82: // ADD A, D
+        srcVal = de.first;
+        break;
+    case 0x83: // ADD A, E
+        srcVal = de.second;
+        break;
+    case 0x84: // ADD A, H
+        srcVal = hl.first;
+        break;
+    case 0x85: // ADD A, L
+        srcVal = hl.second;
+        break;
+    case 0x86: // ADD A, (HL)
+        srcVal = m_Memory.ReadMemory8(hl.both);
+        cycles = 8;
+        break;
+    case 0xC6: // ADD A, #
+        srcVal = m_Memory.ReadMemory8(pc + 1);
+        cycles = 8;
+        jp_counter = 2;
+        break;
+    default:
+        throw std::runtime_error("Unimplemented opCode " + opCode);
+    }
+
+    flags.n = false;
+
+    if (CarryOnAddition(af.first, srcVal))
+        flags.c = true;
+
+    if (HalfCarryOnAddition(af.first, srcVal))
+        flags.h = true;
+
+
+    af.first += srcVal;
+
+    if (af.first == 0)
+        flags.z = true;
+
+    pc += jp_counter;
 }

@@ -10,10 +10,20 @@ public:
     void ExecuteInstruction();
 private:
 
+    static constexpr uint8_t Swap(uint8_t val)
+    {
+        return (val >> 4) | (val << 4);
+    }
+
     static constexpr bool CarryOnAddition(uint16_t first_num, uint16_t second_num)
     {
         // is this garbage and slow? probably, but it works
         return static_cast<uint32_t>(first_num) + static_cast<uint32_t>(second_num) > 0xFFFF;
+    }
+
+    static constexpr bool CarryOnAddition(uint8_t first_num, uint8_t second_num)
+    {
+        return static_cast<uint16_t>(first_num) + static_cast<uint16_t>(second_num) > 0xFF;
     }
 
     static constexpr bool CarryOnSubtraction(uint16_t first_num, uint16_t second_num)
@@ -60,7 +70,9 @@ private:
     void Execute_Dec_16(uint8_t opCode, bool suppress_pc_inc = false);
     void Execute_Jr_Flag(uint8_t opCode);
     void Execute_Jr_n(uint8_t opCode);
+    void Execute_Jp_HL();
     void Execute_Add_HL_Operand(uint8_t opCode);
+    void Execute_Add_8(uint8_t opCode);
     void Execute_Inc_8(uint8_t opCode);
     void Execute_Inc_16(uint8_t opCode, bool suppress_pc_inc = false);
     void Execute_Sub_8(uint8_t opCode);
@@ -70,12 +82,16 @@ private:
     void Execute_Compare_8(uint8_t opCode);
     void Execute_Or_N(uint8_t opCode);
     void Execute_And_N(uint8_t opCode);
+    void Execute_Swap();
+    void Execute_Rst(uint8_t opCode);
 
     uint16_t PopStack();
     void PushStack(uint16_t val);
 
     void Execute_Call();
     void Execute_Return(uint8_t opCode);
+    void Execute_Pop(uint8_t opCode);
+    void Execute_Push(uint8_t opCode);
 
     Memory& m_Memory;
 
