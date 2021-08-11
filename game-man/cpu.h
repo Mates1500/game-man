@@ -73,7 +73,7 @@ private:
     void Execute_Load_8_Operand(uint8_t opCode);
     void Execute_Load_16_Val(uint8_t opCode);
     void Execute_Load_HL_A_Dec(uint8_t opCode);
-    void Execute_Load_HL_A_Inc();
+    void Execute_Load_A_HL_Inc();
     void Execute_Load_FF00_C_A();
     void Execute_Dec_8(uint8_t opCode);
     void Execute_Dec_16(uint8_t opCode, bool suppress_pc_inc = false);
@@ -103,6 +103,7 @@ private:
 
     void Execute_Call(uint8_t opCode);
     void Execute_Return(uint8_t opCode);
+    void Execute_RETI();
     void Execute_Pop(uint8_t opCode);
     void Execute_Push(uint8_t opCode);
 
@@ -142,6 +143,14 @@ private:
     RenderingState current_rendering_state;
     uint16_t rendering_counter_current_cycle;
     void CycleRenderingState(uint8_t cycles);
+
+    struct DisplayInfo
+    {
+        uint8_t currently_render_y;
+        uint16_t rendering_current_cycle;
+    };
+    DisplayInfo display_info;
+    void CycleRenderingLines(uint8_t cycles);
 
     struct cpu_flags
     {

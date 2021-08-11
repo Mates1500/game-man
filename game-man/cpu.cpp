@@ -9,6 +9,8 @@ Cpu::Cpu(Memory& memory): m_Memory(memory)
     this->rendering_counter_total = 0;
     this->rendering_counter_current_cycle = 0;
     this->current_rendering_state = RenderingState::HBlank;
+    this->interrupts_enabled = false;
+    this->display_info.currently_render_y = 0;
 }
 
 void Cpu::StartExecution()
@@ -24,6 +26,7 @@ void Cpu::StartExecution()
         if(interrupt_jp_address != 0)
         {
             interrupts_enabled = false;
+            m_Memory.SetMemory8(0xFFFF, 0); // disable IME
             PushStack(pc);
             pc = interrupt_jp_address;
         }
@@ -218,7 +221,7 @@ void Cpu::ExecuteInstruction()
         Execute_Load_HL_A_Dec(op);
         break;
     case 0x2A: // LDI A, (HL)
-        Execute_Load_HL_A_Inc();
+        Execute_Load_A_HL_Inc();
         break;
     case 0xE2: // LD (C), A
         Execute_Load_FF00_C_A();
@@ -281,6 +284,7 @@ void Cpu::ExecuteInstruction()
     case 0xF3: // DI
         // 4 cycles
         interrupts_enabled = false;
+        m_Memory.SetMemory8(0xFFFF, 0); // disable IME
         pc += 1;
         break;
     case 0xBF: // CP A
@@ -319,6 +323,9 @@ void Cpu::ExecuteInstruction()
     case 0xD0: // RET NC
     case 0xD8: // RET C
         Execute_Return(op);
+        break;
+    case 0xD9: // RETI
+        Execute_RETI();
         break;
     case 0xB7: // OR A
     case 0xB0: // OR B
@@ -509,6 +516,7 @@ void Cpu::ElapseCycles(uint8_t cycles)
     if (display_enabled)
     {
         CycleRenderingState(cycles);
+        CycleRenderingLines(cycles);
     }
 
     SleepFor(cycles);
@@ -547,8 +555,7 @@ void Cpu::Execute_Xor_N(uint8_t opCode)
 
     af.first ^= operand;
 
-    if (af.first == 0)
-        flags.z = true;
+    flags.z = af.first == 0;
     flags.n = false;
     flags.h = false;
     flags.c = false;
@@ -960,11 +967,11 @@ void Cpu::Execute_Load_HL_A_Dec(uint8_t opCode)
     ElapseCycles(cycles);
 }
 
-void Cpu::Execute_Load_HL_A_Inc()
+void Cpu::Execute_Load_A_HL_Inc()
 {
     uint8_t cycles = 8;
 
-    m_Memory.SetMemory8(hl.both, af.first);
+    af.first = m_Memory.ReadMemory8(hl.both);
     Execute_Inc_16(0x23, true); // INC HL val
     pc += 1;
 
@@ -1017,13 +1024,11 @@ void Cpu::Execute_Dec_8(uint8_t opCode)
         throw std::runtime_error("Unimplemented opCode " + opCode);
     }
 
-    if (HalfCarryOnSubtraction(*operand, *operand - 1))
-        flags.h = true;
+    flags.h = (HalfCarryOnSubtraction(*operand, *operand - 1));
 
     *operand -= 1;
-    
-    if (*operand == 0)
-        flags.z = true;
+
+    flags.z = *operand == 0;
     flags.n = true;
     
     UpdateFlagRegister();
@@ -1101,13 +1106,11 @@ void Cpu::Execute_Inc_8(uint8_t opCode)
         throw std::runtime_error("Unimplemented opCode " + opCode);
     }
 
-    if(HalfCarryOnAddition(*operand, 1))
-        flags.h = true;
+    flags.h = HalfCarryOnAddition(*operand, 1);
     flags.n = false;
 
     *operand += 1;
-    if (*operand == 0)
-        flags.z = true;
+    flags.z = *operand == 0;
     UpdateFlagRegister();
 
     pc += 1;
@@ -1141,10 +1144,12 @@ void Cpu::Execute_Inc_16(uint8_t opCode, bool suppress_pc_inc)
 
     *operand += 1;
 
-    if(!suppress_pc_inc)
+    if (!suppress_pc_inc)
+    {
         pc += 1;
 
-    ElapseCycles(cycles);
+        ElapseCycles(cycles);
+    }
 }
 
 void Cpu::Execute_Sub_8(uint8_t opCode)
@@ -1184,15 +1189,12 @@ void Cpu::Execute_Sub_8(uint8_t opCode)
     }
 
     flags.n = true;
-    if (!HalfCarryOnSubtraction(af.first, *operand))
-        flags.h = true;
-    if (!CarryOnSubtraction(af.first, *operand))
-        flags.c = true;
+    flags.h = !HalfCarryOnSubtraction(af.first, *operand);
+    flags.c = !CarryOnSubtraction(af.first, *operand);
 
     af.first -= *operand;
 
-    if (af.first == 0)
-        flags.z = true;
+    flags.z = af.first == 0;
     UpdateFlagRegister();
 
     pc += 1;
@@ -1239,15 +1241,12 @@ void Cpu::Execute_SBC_8(uint8_t opCode)
     const uint8_t subtractor = *operand + flags.c;
 
     flags.n = true;
-    if (!HalfCarryOnSubtraction(af.first, subtractor))
-        flags.h = true;
-    if (!CarryOnSubtraction(af.first, subtractor))
-        flags.c = true;
+    flags.h = !HalfCarryOnSubtraction(af.first, subtractor);
+    flags.c = !CarryOnSubtraction(af.first, subtractor);
 
     af.first -= subtractor;
 
-    if (af.first == 0)
-        flags.z = true;
+    flags.z = af.first == 0;
     UpdateFlagRegister();
 
     pc += 1;
@@ -1320,14 +1319,11 @@ void Cpu::Execute_Compare_8(uint8_t opCode)
         throw std::runtime_error("Unimplemented opCode " + opCode);
     }
 
-    if (af.first - comparator == 0)
-        flags.z = true;
+    flags.z = af.first - comparator == 0;
 
     flags.n = true;
-    if (HalfCarryOnSubtraction(af.first, comparator))
-        flags.h = true;
-    if (CarryOnSubtraction(af.first, comparator))
-        flags.c = true;
+    flags.h = HalfCarryOnSubtraction(af.first, comparator);
+    flags.c = CarryOnSubtraction(af.first, comparator);
     UpdateFlagRegister();
 
     pc += jp_counter;
@@ -1378,8 +1374,7 @@ void Cpu::Execute_Or_N(uint8_t opCode)
 
     af.first |= *operand;
 
-    if (af.first == 0)
-        flags.z = true;
+    flags.z = af.first == 0;
 
     flags.n = false;
     flags.h = false;
@@ -1434,9 +1429,7 @@ void Cpu::Execute_And_N(uint8_t opCode)
 
     af.first &= *operand;
 
-    if (af.first == 0)
-        flags.z = true;
-
+    flags.z = af.first == 0;
     flags.n = false;
     flags.h = true;
     flags.c = false;
@@ -1484,8 +1477,7 @@ void Cpu::Execute_Swap(uint8_t second_opcode)
 
     *operand = Swap(*operand);
 
-    if (*operand == 0)
-        flags.z = true;
+    flags.z = *operand == 0;
 
     flags.n = false;
     flags.h = false;
@@ -1597,9 +1589,7 @@ void Cpu::Execute_Bit_Test(uint8_t second_opcode)
 
     const uint8_t aligned_bit = 0x1 << bit_index;
 
-    if ((aligned_bit & *operand) == 0)
-        flags.z = true;
-
+    flags.z = (aligned_bit & *operand) == 0;
     flags.n = false;
     flags.h = true;
     UpdateFlagRegister();
@@ -1615,9 +1605,7 @@ void Cpu::Execute_RRCA()
     const bool bit_zero = af.first & 0x1;
     af.first = std::rotr(af.first, 1);
 
-    if (af.first == 0)
-        flags.z = true;
-
+    flags.z = af.first == 0;
     flags.n = false;
     flags.h = false;
     flags.c = bit_zero;
@@ -1634,9 +1622,7 @@ void Cpu::Execute_RLCA()
     const bool bit_seven = af.first & 0x80;
     af.first = std::rotl(af.first, 1);
 
-    if (af.first == 0)
-        flags.z = true;
-
+    flags.z = af.first == 0;
     flags.n = false;
     flags.h = false;
     flags.c = bit_seven;
@@ -1747,6 +1733,18 @@ void Cpu::Execute_Return(uint8_t opCode)
     {
         pc += 1;
     }
+
+    ElapseCycles(cycles);
+}
+
+void Cpu::Execute_RETI()
+{
+    const uint8_t cycles = 8;
+
+    const uint16_t rt_address = PopStack();
+    pc = rt_address;
+
+    interrupts_enabled = true;
 
     ElapseCycles(cycles);
 }
@@ -1942,6 +1940,39 @@ void Cpu::CycleRenderingState(uint8_t cycles)
     }
 }
 
+void Cpu::CycleRenderingLines(uint8_t cycles)
+{
+    display_info.rendering_current_cycle += cycles;
+
+    if (display_info.rendering_current_cycle < 456)
+        return;
+
+    display_info.rendering_current_cycle -= 456;
+    if(display_info.currently_render_y < 153)
+    {
+        display_info.currently_render_y += 1;
+    }
+    else
+    {
+        display_info.currently_render_y = 0;
+    }
+
+    m_Memory.SetMemory8(0xFF44, display_info.currently_render_y); // set LY
+
+    const uint8_t lyc_compare = m_Memory.ReadMemory8(0xFF45);
+    uint8_t stat = m_Memory.ReadMemory8(0xFF41);
+    if(display_info.currently_render_y == lyc_compare)
+    {
+        stat = stat | 0b100; // set coincidence flag
+        m_Memory.SetMemory8(0xFF41, stat);
+    }
+    else
+    {
+        stat = stat & 0b11111011; // reset coincidence flag, keep everything else
+        m_Memory.SetMemory8(0xFF41, stat);
+    }
+}
+
 
 void Cpu::Execute_Jr_Flag(uint8_t opCode)
 {
@@ -1966,11 +1997,12 @@ void Cpu::Execute_Jr_Flag(uint8_t opCode)
     if(!jp)
     {
         pc += 2;
+        ElapseCycles(cycles);
         return;
     }
     uint8_t orig_val = m_Memory.ReadMemory8(pc + 1);
-    int8_t jump_relative = static_cast<int8_t>(orig_val) + 2;
-    pc += jump_relative;
+    int8_t jump_relative = static_cast<int8_t>(orig_val);
+    pc += 2 + jump_relative;
 
     ElapseCycles(cycles);
 }
@@ -2014,13 +2046,13 @@ void Cpu::Execute_Add_HL_Operand(uint8_t opCode)
     case 0x39: // ADD HL, SP
         srcVal = sp;
         break;
+    default:
+        throw std::runtime_error("Unknown opCode " + opCode);
     }
 
     flags.n = false;
-    if (HalfCarryOnAddition(hl.both, srcVal))
-        flags.h = true;
-    if (CarryOnAddition(hl.both, srcVal))
-        flags.c = true;
+    flags.h = HalfCarryOnAddition(hl.both, srcVal);
+    flags.c = CarryOnAddition(hl.both, srcVal);
     UpdateFlagRegister();
     hl.both += srcVal;
     pc += 1;
@@ -2070,18 +2102,13 @@ void Cpu::Execute_Add_8(uint8_t opCode)
     }
 
     flags.n = false;
-
-    if (CarryOnAddition(af.first, srcVal))
-        flags.c = true;
-
-    if (HalfCarryOnAddition(af.first, srcVal))
-        flags.h = true;
+    flags.c = CarryOnAddition(af.first, srcVal);
+    flags.h = HalfCarryOnAddition(af.first, srcVal);
 
 
     af.first += srcVal;
 
-    if (af.first == 0)
-        flags.z = true;
+    flags.z = af.first == 0;
     UpdateFlagRegister();
 
     pc += jp_counter;
