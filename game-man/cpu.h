@@ -1,6 +1,8 @@
 #pragma once
+#include <chrono>
 #include "memory.h"
 #define GB_ROM_ENTRY_POINT 0x100
+#define GB_CLOCK 4194304
 
 class Cpu
 {
@@ -57,7 +59,14 @@ private:
         return (int)(first_num & 0x00FF) - (int)(second_num & 0x00FF) < 0;
     }
 
-    void ElapseCycles(int cycles);
+    enum class InterruptFlags{VBlank = 1, LCDC = 2, TimerOverflow = 4, SerialIOTransferComplete = 8, TransitionPin = 16};
+    static constexpr bool IsInterruptFlagEnabled(uint8_t flag_byte, InterruptFlags requested_flag)
+    {
+        return (flag_byte & static_cast<uint8_t>(requested_flag)) == static_cast<uint8_t>(requested_flag);
+    }
+    uint8_t GetInterruptJpAddress();
+
+    void ElapseCycles(uint8_t cycles);
 
     void Execute_Xor_N(uint8_t opCode);
     void Execute_Load_8_Val(uint8_t opCode);
@@ -82,16 +91,26 @@ private:
     void Execute_Compare_8(uint8_t opCode);
     void Execute_Or_N(uint8_t opCode);
     void Execute_And_N(uint8_t opCode);
-    void Execute_Swap();
+    void Execute_Swap(uint8_t second_opcode);
     void Execute_Rst(uint8_t opCode);
+    void Execute_Bit_Test(uint8_t second_opcode);
+    void Execute_RRCA();
+    void Execute_RLCA();
+    void Execute_SCF();
 
     uint16_t PopStack();
     void PushStack(uint16_t val);
 
-    void Execute_Call();
+    void Execute_Call(uint8_t opCode);
     void Execute_Return(uint8_t opCode);
     void Execute_Pop(uint8_t opCode);
     void Execute_Push(uint8_t opCode);
+
+    void SleepFor(uint8_t cycles);
+    std::chrono::steady_clock::time_point last_tick;
+
+    void UpdateFlagRegister();
+    void PowerUpSequence();
 
     Memory& m_Memory;
 
@@ -99,8 +118,9 @@ private:
     {
         struct
         {
-            uint8_t first;
+            // Little endian
             uint8_t second;
+            uint8_t first;
         };
         uint16_t both;
     };
@@ -111,6 +131,17 @@ private:
     TwinRegister hl; // H and L registers, often used to point to addresses in memory
     uint16_t sp; // stack pointer register
     uint16_t pc; // program counter
+
+    // debug
+    std::vector<uint16_t> pc_history;
+
+
+    // rendering emulation
+    enum class RenderingState{ HBlank, VBlank, OAM_Used, OAM_RAM_Used};
+    int rendering_counter_total;
+    RenderingState current_rendering_state;
+    uint16_t rendering_counter_current_cycle;
+    void CycleRenderingState(uint8_t cycles);
 
     struct cpu_flags
     {
