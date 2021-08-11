@@ -457,7 +457,6 @@ uint8_t Cpu::GetInterruptJpAddress()
     if (interrupt_flag == 0)
         return 0;
 
-    uint8_t jp_address;
     if(IsInterruptFlagEnabled(interrupt_enable, InterruptFlags::VBlank))
     {
         if(IsInterruptFlagEnabled(interrupt_flag, InterruptFlags::VBlank))
