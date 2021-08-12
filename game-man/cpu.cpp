@@ -35,7 +35,11 @@ void Cpu::StartExecution()
 
 void Cpu::ExecuteInstruction()
 {
-    pc_history.push_back(pc);
+    pc_history.insert(pc_history.begin(), pc);
+    if(pc_history.size() > 10000)
+    {
+        pc_history.resize(5000);
+    }
 
     uint8_t op = m_Memory.ReadMemory8(pc);
 
@@ -1887,46 +1891,46 @@ void Cpu::CycleRenderingState(uint8_t cycles)
     rendering_counter_total += cycles;
     rendering_counter_current_cycle += cycles;
 
-    if (rendering_counter_current_cycle < 80)
+    if (rendering_counter_current_cycle < OAM_USED_CYCLES) // lowest number of cycles to trigger anything
         return;
 
     switch(current_rendering_state)
     {
     case RenderingState::HBlank:
-        if(rendering_counter_current_cycle >= 204 && rendering_counter_total < 65664)
+        if(rendering_counter_current_cycle >= HBLANK_CYCLES && rendering_counter_total < VBLANK_START_CYCLE)
         {
-            rendering_counter_current_cycle -= 204;
+            rendering_counter_current_cycle -= HBLANK_CYCLES;
             current_rendering_state = RenderingState::OAM_Used;
             changed = true;
         }
-        else if(rendering_counter_current_cycle >= 204 && rendering_counter_total >= 65664)
+        else if(rendering_counter_current_cycle >= HBLANK_CYCLES && rendering_counter_total >= VBLANK_START_CYCLE)
         {
-            rendering_counter_current_cycle -= 204;
+            rendering_counter_current_cycle -= HBLANK_CYCLES;
             current_rendering_state = RenderingState::VBlank;
             changed = true;
         }
         break;
     case RenderingState::VBlank: 
-        if(rendering_counter_current_cycle >= 4560 && rendering_counter_total >= 70224)
+        if(rendering_counter_current_cycle >= VBLANK_CYCLES && rendering_counter_total >= VBLANK_END_CYCLE)
         {
-            rendering_counter_total -= 70224;
-            rendering_counter_current_cycle -= 4560;
+            rendering_counter_total -= VBLANK_END_CYCLE;
+            rendering_counter_current_cycle -= VBLANK_CYCLES;
             current_rendering_state = RenderingState::HBlank;
             changed = true;
         }
         break;
     case RenderingState::OAM_Used:
-        if(rendering_counter_current_cycle >= 80)
+        if(rendering_counter_current_cycle >= OAM_USED_CYCLES)
         {
-            rendering_counter_current_cycle -= 80;
+            rendering_counter_current_cycle -= OAM_USED_CYCLES;
             current_rendering_state = RenderingState::OAM_RAM_Used;
             changed = true;
         }
         break;
     case RenderingState::OAM_RAM_Used: 
-        if(rendering_counter_current_cycle >= 172)
+        if(rendering_counter_current_cycle >= OAM_RAM_USED_CYCLES)
         {
-            rendering_counter_current_cycle -= 172;
+            rendering_counter_current_cycle -= OAM_RAM_USED_CYCLES;
             current_rendering_state = RenderingState::HBlank;
             changed = true;
         }
