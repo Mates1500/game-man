@@ -11,6 +11,8 @@ Cpu::Cpu(Memory& memory): m_Memory(memory)
     this->current_rendering_state = RenderingState::HBlank;
     this->interrupts_enabled = false;
     this->display_info.currently_render_y = 0;
+    this->remaining_di_instructions = 0;
+    this->remaining_ei_instructions = 0;
 }
 
 void Cpu::StartExecution()
@@ -22,6 +24,18 @@ void Cpu::StartExecution()
     {
         this->ExecuteInstruction();
 
+        if(remaining_ei_instructions > 0)
+        {
+            --remaining_ei_instructions;
+            if (remaining_ei_instructions == 0)
+                EI();
+        }
+        if(remaining_di_instructions > 0)
+        {
+            --remaining_di_instructions;
+            if (remaining_di_instructions == 0)
+                DI();
+        }
         const uint8_t interrupt_jp_address = GetInterruptJpAddress();
         if(interrupt_jp_address != 0)
         {
@@ -46,7 +60,7 @@ void Cpu::ExecuteInstruction()
     switch(op)
     {
     case 0x00: // NOP
-        pc += 1;
+        Execute_Nop();
         break;
     case 0x07: // RLCA
         Execute_RLCA();
@@ -116,19 +130,11 @@ void Cpu::ExecuteInstruction()
         Execute_SBC_8(op);
         break;
     case 0x2F: // CPL
-        // one's complement of A register
-        // 4 cycles
-        af.first = ~af.first;
-
-        flags.n = true;
-        flags.h = true;
-        pc += 1;
+        Execute_Cpl();
         break;
     case 0x22: // LDI (HL), A
         // 8 cycles
-        m_Memory.SetMemory8(hl.both, af.first);
-        ++hl.both;
-        pc += 1;
+        Execute_LD_HLI_A();
         break;
     case 0x3E: // LD A, #
     case 0x06: // LD B, n
@@ -268,7 +274,7 @@ void Cpu::ExecuteInstruction()
         break;
     case 0xC3: // JP 16bit
         // 12 cycles
-        pc = m_Memory.ReadMemory16(pc + 1);
+        Execute_Jp_16();
         break;
     case 0xE9: // JP (HL)
         Execute_Jp_HL();
@@ -282,8 +288,7 @@ void Cpu::ExecuteInstruction()
         break;
     case 0xFB: // EI
         // 4 cycles
-        interrupts_enabled = true;
-        pc += 1;
+        Execute_EI();
         break;
     case 0xF3: // DI
         // 4 cycles
@@ -526,6 +531,29 @@ void Cpu::ElapseCycles(uint8_t cycles)
     SleepFor(cycles);
 }
 
+void Cpu::Execute_Nop()
+{
+    const uint8_t cycles = 4;
+
+    pc += 1;
+
+    ElapseCycles(cycles);
+}
+
+void Cpu::Execute_Cpl()
+{
+    const uint8_t cycles = 4;
+    // one's complement of A register
+    // 4 cycles
+    af.first = ~af.first;
+
+    flags.n = true;
+    flags.h = true;
+    pc += 1;
+
+    ElapseCycles(cycles);
+}
+
 void Cpu::Execute_Xor_N(uint8_t opCode)
 {
     uint8_t operand;
@@ -574,6 +602,7 @@ void Cpu::Execute_Load_8_Val(uint8_t opCode)
 {
     // 8 cycles
     uint8_t* operand = nullptr;
+    uint8_t cycles = 8;
     switch(opCode)
     {
     case 0x3E: // LD A, #
@@ -603,6 +632,8 @@ void Cpu::Execute_Load_8_Val(uint8_t opCode)
     *operand = m_Memory.ReadMemory8(pc + 1);
 
     pc += 2;
+
+    ElapseCycles(cycles);
 }
 
 void Cpu::Execute_Load_8_Operand(uint8_t opCode)
@@ -1282,6 +1313,17 @@ void Cpu::Execute_LDH_A_n()
     ElapseCycles(cycles);
 }
 
+void Cpu::Execute_LD_HLI_A()
+{
+    const uint8_t cycles = 8;
+
+    m_Memory.SetMemory8(hl.both, af.first);
+    ++hl.both;
+    pc += 1;
+
+    ElapseCycles(cycles);
+}
+
 void Cpu::Execute_Compare_8(uint8_t opCode)
 {
     uint8_t comparator;
@@ -1647,6 +1689,37 @@ void Cpu::Execute_SCF()
     UpdateFlagRegister();
 
     sp += 1;
+}
+
+void Cpu::Execute_EI()
+{
+    const uint8_t cycles = 4;
+    // 4 cycles
+    remaining_ei_instructions = 2; // this instruction will be subtracted too
+    pc += 1;
+
+    ElapseCycles(cycles);
+}
+
+void Cpu::Execute_DI()
+{
+    const uint8_t cycles = 4;
+    // 4 cycles
+    remaining_di_instructions = 2; // this instruction will be subtracted too
+    pc += 1;
+
+    ElapseCycles(cycles);
+}
+
+void Cpu::EI()
+{
+    interrupts_enabled = true;
+}
+
+void Cpu::DI()
+{
+    interrupts_enabled = false;
+    //m_Memory.SetMemory8(0xFFFF, 0); // disable IME
 }
 
 uint16_t Cpu::PopStack()
@@ -2027,6 +2100,15 @@ void Cpu::Execute_Jp_HL()
 
     uint16_t loc = m_Memory.ReadMemory16(hl.both);
     pc = loc;
+
+    ElapseCycles(cycles);
+}
+
+void Cpu::Execute_Jp_16()
+{
+    const uint8_t cycles = 12;
+    // 12 cycles
+    pc = m_Memory.ReadMemory16(pc + 1);
 
     ElapseCycles(cycles);
 }

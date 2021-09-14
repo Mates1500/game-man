@@ -76,6 +76,8 @@ private:
 
     void ElapseCycles(uint8_t cycles);
 
+    void Execute_Nop();
+    void Execute_Cpl();
     void Execute_Xor_N(uint8_t opCode);
     void Execute_Load_8_Val(uint8_t opCode);
     void Execute_Load_8_Operand(uint8_t opCode);
@@ -88,6 +90,7 @@ private:
     void Execute_Jr_Flag(uint8_t opCode);
     void Execute_Jr_n(uint8_t opCode);
     void Execute_Jp_HL();
+    void Execute_Jp_16();
     void Execute_Add_HL_Operand(uint8_t opCode);
     void Execute_Add_8(uint8_t opCode);
     void Execute_Inc_8(uint8_t opCode);
@@ -96,6 +99,7 @@ private:
     void Execute_SBC_8(uint8_t opCode);
     void Execute_LDH_n_A();
     void Execute_LDH_A_n();
+    void Execute_LD_HLI_A();
     void Execute_Compare_8(uint8_t opCode);
     void Execute_Or_N(uint8_t opCode);
     void Execute_And_N(uint8_t opCode);
@@ -105,6 +109,11 @@ private:
     void Execute_RRCA();
     void Execute_RLCA();
     void Execute_SCF();
+    void Execute_EI();
+    void Execute_DI();
+
+    void EI();
+    void DI();
 
     uint16_t PopStack();
     void PushStack(uint16_t val);
@@ -168,6 +177,10 @@ private:
         bool c;
     };
     cpu_flags flags;
+
+    // EI and DI are delayed by one instruction
+    uint8_t remaining_ei_instructions;
+    uint8_t remaining_di_instructions;
     bool interrupts_enabled;
 };
 
