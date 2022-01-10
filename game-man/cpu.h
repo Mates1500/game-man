@@ -1,5 +1,7 @@
 #pragma once
 #include <chrono>
+
+#include "gamepad-controller.h"
 #include "memory.h"
 #define GB_ROM_ENTRY_POINT 0x100
 #define GB_CLOCK 4194304
@@ -182,5 +184,7 @@ private:
     uint8_t remaining_ei_instructions;
     uint8_t remaining_di_instructions;
     bool interrupts_enabled;
+
+    GamepadController gamepad_controller;
 };
 
