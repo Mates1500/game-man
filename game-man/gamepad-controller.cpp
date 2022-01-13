@@ -33,13 +33,13 @@ void GamepadController::SetOutputState(uint8_t mode)
 uint8_t GamepadController::GetOutput()
 {
     if (this->output_state == OutputState::P15)
-        return static_cast<uint8_t>(~(static_cast<uint8_t>(Button::Right) & static_cast<uint8_t>(Button::Left) &
-            static_cast<uint8_t>(Button::Up) & static_cast<uint8_t>(Button::Down))
+        return static_cast<uint8_t>(~(static_cast<uint8_t>(Button::Right) | static_cast<uint8_t>(Button::Left) |
+            static_cast<uint8_t>(Button::Up) | static_cast<uint8_t>(Button::Down))
             & 0x0F) | HiBit();
 
     if (this->output_state == OutputState::P14)
-        return static_cast<uint8_t>(~((static_cast<uint8_t>(Button::A) & static_cast<uint8_t>(Button::B) &
-                static_cast<uint8_t>(Button::Select) & static_cast<uint8_t>(Button::Start)) >> 4) // shift right 4, as we only want to output low 4 bits
+        return static_cast<uint8_t>(~((static_cast<uint8_t>(Button::A) | static_cast<uint8_t>(Button::B) |
+                static_cast<uint8_t>(Button::Select) | static_cast<uint8_t>(Button::Start)) >> 4) // shift right 4, as we only want to output low 4 bits
             & 0x0F) | HiBit();
 
     return 0x0F | HiBit();
