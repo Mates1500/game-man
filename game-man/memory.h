@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "gamepad-controller.h"
 #define GB_MEMORY_BUFFER_SIZE 0xFFFF
 #define SP_INIT_VAL 0xFFFE
 
@@ -24,7 +26,7 @@ struct MemoryMap
 class Memory
 {
 public:
-    Memory();
+    Memory(GamepadController& gc);
     void SetMemory8(uint16_t offset, uint8_t val);
     void SetMemory16(uint16_t offset, uint16_t val);
     void SetRomMemory(std::vector<uint8_t>& rom_contents) const;
@@ -34,4 +36,5 @@ public:
 private:
     std::vector<uint8_t> m_memoryBuffer;
     MemoryMap* m_memoryMap;
+    GamepadController& m_gamepadController;
 };

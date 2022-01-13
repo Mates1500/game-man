@@ -13,7 +13,8 @@ using namespace std;
 int main()
 {
 	cout << "Hello CMake." << endl;
-	auto mem = Memory();
+	auto gc = GamepadController();
+	auto mem = Memory(gc);
 	auto fh = FileHandle("E:\\tetris-rom\\tetris-rom.gb");
 	auto& vec = fh.GetFileContentsVector();
 	mem.SetRomMemory(vec);

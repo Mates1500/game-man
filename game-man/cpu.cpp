@@ -1292,18 +1292,9 @@ void Cpu::Execute_SBC_8(uint8_t opCode)
 void Cpu::Execute_LDH_n_A()
 {
     const uint8_t cycles = 12;
-
     const uint8_t extra_offset = m_Memory.ReadMemory8(pc + 1);
 
-    if (extra_offset == 0) // 0xFF00 == IO Controller
-    {
-        gamepad_controller.SetOutputState(af.first);
-    }
-    else
-    {
-        m_Memory.SetMemory8(0xFF00 + extra_offset, af.first);
-    }
-
+    m_Memory.SetMemory8(0xFF00 + extra_offset, af.first);
     pc += 2;
 
     ElapseCycles(cycles);
@@ -1312,18 +1303,9 @@ void Cpu::Execute_LDH_n_A()
 void Cpu::Execute_LDH_A_n()
 {
     const uint8_t cycles = 12;
-
     const uint8_t extra_offset = m_Memory.ReadMemory8(pc + 1);
 
-    if(extra_offset == 0) // 0xFF00 = IO Controller
-    {
-        af.first = gamepad_controller.GetOutput();
-    }
-    else
-    {
-        af.first = m_Memory.ReadMemory8(0xFF00 + extra_offset);
-    }
-
+    af.first = m_Memory.ReadMemory8(0xFF00 + extra_offset);
     pc += 2;
 
     ElapseCycles(cycles);

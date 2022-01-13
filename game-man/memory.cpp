@@ -2,14 +2,23 @@
 
 #include <stdexcept>
 
-Memory::Memory() : m_memoryBuffer(GB_MEMORY_BUFFER_SIZE + 1), m_memoryMap(reinterpret_cast<MemoryMap*>(m_memoryBuffer.data()))
+Memory::Memory(GamepadController& gc) : m_memoryBuffer(GB_MEMORY_BUFFER_SIZE + 1), m_memoryMap(reinterpret_cast<MemoryMap*>(m_memoryBuffer.data())), m_gamepadController(gc)
 {
 
 }
 
 void Memory::SetMemory8(uint16_t offset, uint8_t val)
 {
-    this->m_memoryBuffer.at(offset) = val;
+    switch(offset)
+    {
+    case 0xFF00: // Gamepad Controller
+        m_gamepadController.SetOutputState(val);
+        this->m_memoryBuffer.at(offset) = m_gamepadController.GetOutput();
+        break;
+    default:
+        this->m_memoryBuffer.at(offset) = val;
+        break;
+    }
 }
 
 void Memory::SetMemory16(uint16_t offset, uint16_t val)
@@ -41,7 +50,17 @@ void Memory::SetRomMemory(std::vector<uint8_t>& rom_contents) const
 
 uint8_t Memory::ReadMemory8(uint16_t offset)
 {
-    return this->m_memoryBuffer.at(offset);
+    uint8_t tmpVal;
+
+    switch(offset)
+    {
+    case 0xFF00: // Gamepad Controller
+        tmpVal = m_gamepadController.GetOutput();
+        this->m_memoryBuffer.at(offset) = tmpVal;
+        return tmpVal;
+    default:
+        return this->m_memoryBuffer.at(offset);
+    }
 }
 
 uint16_t Memory::ReadMemory16(uint16_t offset)
