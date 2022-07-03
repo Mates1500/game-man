@@ -276,7 +276,14 @@ void Cpu::ExecuteInstruction()
         // 12 cycles
         Execute_Jp_16();
         break;
-    case 0xE9: // JP (HL)
+    case 0xC2: // JP NZ 16bit
+    case 0xCA: // JP Z 16bit
+    case 0xD2: // JP NC 16bit
+    case 0xDA: // JP C 16bit
+        // 12 cycles
+        Execute_Jp_16_Flag(op);
+        break;
+    case 0xE9: // JP HL
         Execute_Jp_HL();
         break;
     case 0xE0: // LDH (n), A
@@ -361,7 +368,6 @@ void Cpu::ExecuteInstruction()
     case 0xCB: // CB stuff, next switch...
     {
         uint8_t next_opcode = m_Memory.ReadMemory8(pc + 1);
-        pc += 1;
         switch (next_opcode)
         {
         case 0x37: // SWAP A
@@ -437,7 +443,74 @@ void Cpu::ExecuteInstruction()
         case 0x7C:
         case 0x7D:
         case 0x7E:
+        case 0x7F:
             Execute_Bit_Test(next_opcode);
+            break;
+        case 0x80: // RES b, r operations, cba to write them all out
+        case 0x81:
+        case 0x82:
+        case 0x83:
+        case 0x84:
+        case 0x85:
+        case 0x86:
+        case 0x87:
+        case 0x88:
+        case 0x89:
+        case 0x8A:
+        case 0x8B:
+        case 0x8C:
+        case 0x8D:
+        case 0x8E:
+        case 0x8F:
+        case 0x90:
+        case 0x91:
+        case 0x92:
+        case 0x93:
+        case 0x94:
+        case 0x95:
+        case 0x96:
+        case 0x97:
+        case 0x98:
+        case 0x99:
+        case 0x9A:
+        case 0x9B:
+        case 0x9C:
+        case 0x9D:
+        case 0x9E:
+        case 0x9F:
+        case 0xA0:
+        case 0xA1:
+        case 0xA2:
+        case 0xA3:
+        case 0xA4:
+        case 0xA5:
+        case 0xA6:
+        case 0xA7:
+        case 0xA8:
+        case 0xA9:
+        case 0xAA:
+        case 0xAB:
+        case 0xAC:
+        case 0xAD:
+        case 0xAE:
+        case 0xAF:
+        case 0xB0:
+        case 0xB1:
+        case 0xB2:
+        case 0xB3:
+        case 0xB4:
+        case 0xB5:
+        case 0xB6:
+        case 0xB7:
+        case 0xB8:
+        case 0xB9:
+        case 0xBA:
+        case 0xBB:
+        case 0xBC:
+        case 0xBD:
+        case 0xBE:
+        case 0xBF:
+            Execute_Reset_Bit(next_opcode);
             break;
 
         default:
@@ -1567,7 +1640,7 @@ void Cpu::Execute_Rst(uint8_t opCode)
         throw std::runtime_error("Unknown opCode " + opCode);
     }
 
-    PushStack(pc);
+    PushStack(pc + 1);
 
     pc = abs_jp;
 
@@ -1576,7 +1649,7 @@ void Cpu::Execute_Rst(uint8_t opCode)
 
 void Cpu::Execute_Bit_Test(uint8_t second_opcode)
 {
-    if (second_opcode < 0x40 || second_opcode > 0x7E)
+    if (second_opcode < 0x40 || second_opcode > 0x7F)
         throw std::runtime_error("Unknown opCode " + second_opcode);
 
     uint8_t cycles = 8;
@@ -1637,6 +1710,71 @@ void Cpu::Execute_Bit_Test(uint8_t second_opcode)
     flags.n = false;
     flags.h = true;
     UpdateFlagRegister();
+
+    pc += 2;
+
+    ElapseCycles(cycles);
+}
+
+void Cpu::Execute_Reset_Bit(uint8_t second_opcode)
+{
+    if (second_opcode < 0x80 || second_opcode > 0xBF)
+        throw std::runtime_error("Unknown opCode " + second_opcode);
+
+    uint8_t cycles = 8;
+    uint8_t* operand;
+    uint8_t bit_index;
+
+    const uint8_t opcode_base = second_opcode - 0x80;
+
+    if (opcode_base % 8 == 0) // b, B
+    {
+        operand = &bc.first;
+        bit_index = opcode_base / 8;
+    }
+    else if (opcode_base % 8 == 1) // b, C
+    {
+        operand = &bc.second;
+        bit_index = (opcode_base - 1) / 8;
+    }
+    else if (opcode_base % 8 == 2) // b, D
+    {
+        operand = &de.first;
+        bit_index = (opcode_base - 2) / 8;
+    }
+    else if (opcode_base % 8 == 3) // b, E
+    {
+        operand = &de.second;
+        bit_index = (opcode_base - 3) / 8;
+    }
+    else if (opcode_base % 8 == 4) // b, H
+    {
+        operand = &hl.first;
+        bit_index = (opcode_base - 4) / 8;
+    }
+    else if (opcode_base % 8 == 5) // b, L
+    {
+        operand = &hl.second;
+        bit_index = (opcode_base - 5) / 8;
+    }
+    else if (opcode_base % 8 == 6) // b, (HL)
+    {
+        operand = m_Memory.GetPtrAt(hl.both);
+        bit_index = (opcode_base - 6) / 8;
+        cycles = 16;
+    }
+    else if (opcode_base % 8 == 7) // b, A
+    {
+        operand = &af.first;
+        bit_index = (opcode_base - 7) / 8;
+    }
+    else
+    {
+        throw std::runtime_error("Couldn't figure out operand or bit number???");
+    }
+
+    const uint8_t aligned_bit_inverted = ~(0x1 << bit_index);
+    *operand = *operand & aligned_bit_inverted;
 
     pc += 2;
 
@@ -2096,8 +2234,7 @@ void Cpu::Execute_Jp_HL()
 {
     uint8_t cycles = 4;
 
-    uint16_t loc = m_Memory.ReadMemory16(hl.both);
-    pc = loc;
+    pc = hl.both;
 
     ElapseCycles(cycles);
 }
@@ -2107,6 +2244,36 @@ void Cpu::Execute_Jp_16()
     const uint8_t cycles = 12;
     // 12 cycles
     pc = m_Memory.ReadMemory16(pc + 1);
+
+    ElapseCycles(cycles);
+}
+
+void Cpu::Execute_Jp_16_Flag(uint8_t opCode)
+{
+    const uint8_t cycles = 12;
+    bool jp = false;
+    switch(opCode)
+    {
+    case 0xC2: // JP NZ nn
+        jp = !flags.z;
+        break;
+    case 0xCA: // JP Z nn
+        jp = flags.z;
+        break;
+    case 0xD2: // JP NC nn
+        jp = !flags.c;
+        break;
+    case 0xDA: // JP C nn
+        jp = flags.c;
+        break;
+    default:
+        throw std::runtime_error("Unknown opCode " + opCode);
+    }
+
+    if (jp)
+        pc = m_Memory.ReadMemory16(pc + 1);
+    else
+        pc += 3;
 
     ElapseCycles(cycles);
 }

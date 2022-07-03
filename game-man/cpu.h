@@ -92,6 +92,7 @@ private:
     void Execute_Jr_n(uint8_t opCode);
     void Execute_Jp_HL();
     void Execute_Jp_16();
+    void Execute_Jp_16_Flag(uint8_t opCode);
     void Execute_Add_HL_Operand(uint8_t opCode);
     void Execute_Add_8(uint8_t opCode);
     void Execute_Inc_8(uint8_t opCode);
@@ -107,6 +108,7 @@ private:
     void Execute_Swap(uint8_t second_opcode);
     void Execute_Rst(uint8_t opCode);
     void Execute_Bit_Test(uint8_t second_opcode);
+    void Execute_Reset_Bit(uint8_t second_opcode);
     void Execute_RRCA();
     void Execute_RLCA();
     void Execute_SCF();
